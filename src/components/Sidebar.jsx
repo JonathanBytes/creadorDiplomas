@@ -1,44 +1,106 @@
-import { Download, FileType, Layers, Upload, Users } from 'lucide-react';
+import { CircleCheck, CircleAlert, Download, FileText, GraduationCap, LoaderCircle, Upload, X } from 'lucide-react';
+import { FilePicker } from './FilePicker';
 import { LayerControls } from './LayerControls';
-import {
-  DESCRIPTION_LAYER,
-  LAYER_KEYS,
-  LAYER_LABELS,
-  NAME_LAYER,
-} from '../utils/layers';
+import { DESCRIPTION_LAYER, LAYER_KEYS, LAYER_LABELS } from '../utils/layers';
 
-const SECTION_TITLE_STYLE = {
-  fontSize: '0.875rem',
-  fontWeight: 600,
-  color: 'var(--text-secondary)',
-  marginBottom: '0.75rem',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-};
+function formatFileSize(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-function LayerTab({ layerKey, isActive, isEnabled, onSelect }) {
+function Section({ title, meta, children }) {
+  return (
+    <section className="section">
+      <div className="section-head">
+        <h2 className="section-title">{title}</h2>
+        {meta && <span className="section-meta">{meta}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function TemplatePicker({ file, onFile }) {
+  return (
+    <FilePicker
+      accept=".pdf,application/pdf"
+      onFile={onFile}
+      inputLabel="Plantilla PDF"
+      className={`dropzone${file ? ' is-filled' : ''}`}
+    >
+      {file ? (
+        <>
+          <FileText size={18} className="dropzone-icon" aria-hidden />
+          <span className="dropzone-text">
+            <span className="dropzone-title" title={file.name}>{file.name}</span>
+            <span className="dropzone-meta">{formatFileSize(file.size)}</span>
+          </span>
+          <span className="dropzone-action">Cambiar</span>
+        </>
+      ) : (
+        <>
+          <Upload size={18} className="dropzone-icon" aria-hidden />
+          <span className="dropzone-text">
+            <span className="dropzone-title">Subir plantilla PDF</span>
+            <span className="dropzone-meta">Arrastra el archivo o haz clic</span>
+          </span>
+        </>
+      )}
+    </FilePicker>
+  );
+}
+
+function Notice({ notice, onDismiss }) {
+  const Icon = notice.tone === 'success' ? CircleCheck : CircleAlert;
+
+  return (
+    <div className={`notice notice-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>
+      <Icon size={16} className="notice-icon" aria-hidden />
+      <div className="notice-body">
+        <p className="notice-title">{notice.title}</p>
+        {notice.items && (
+          <ul className="notice-list">
+            {notice.items.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        )}
+      </div>
+      <button type="button" className="icon-btn icon-btn-sm" onClick={onDismiss} aria-label="Cerrar aviso">
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
+function ExportButton({ count, isGenerating, progress, disabled, onClick }) {
+  const ratio = progress?.total ? progress.current / progress.total : 0;
+
   return (
     <button
-      onClick={() => onSelect(layerKey)}
-      style={{
-        flex: 1,
-        padding: '0.5rem 0.75rem',
-        background: isActive ? 'var(--primary-color)' : 'var(--bg-color)',
-        border: '1px solid var(--border-color)',
-        borderRadius: 'var(--radius)',
-        color: isActive ? 'white' : 'var(--text-primary)',
-        fontWeight: 600,
-        opacity: isEnabled ? 1 : 0.55,
-      }}
+      type="button"
+      className="btn btn-primary btn-block btn-export"
+      onClick={onClick}
+      disabled={disabled}
+      aria-busy={isGenerating}
+      style={{ '--progress': ratio }}
     >
-      {LAYER_LABELS[layerKey]}
+      {isGenerating ? (
+        <>
+          <LoaderCircle size={16} className="spin" aria-hidden />
+          {progress ? `Generando ${progress.current} de ${progress.total}…` : 'Generando…'}
+        </>
+      ) : (
+        <>
+          <Download size={16} aria-hidden />
+          {count > 0 ? `Exportar ${count} ${count === 1 ? 'diploma' : 'diplomas'}` : 'Exportar diplomas'}
+        </>
+      )}
     </button>
   );
 }
 
 export function Sidebar({
-  onPdfUpload,
+  pdfFile,
+  onPdfFile,
   studentsText,
   setStudentsText,
   studentsCount,
@@ -48,174 +110,89 @@ export function Sidebar({
   onSelectLayer,
   onLayerChange,
   onLayerPositionChange,
-  onLayerFontUpload,
+  onLayerFontFile,
   onExport,
   isGenerating,
   progress,
+  exportBlocker,
+  notice,
+  onDismissNotice,
 }) {
-  const toggleDescription = (enabled) => {
-    onLayerChange(DESCRIPTION_LAYER, { enabled });
-    if (enabled) {
-      onSelectLayer(DESCRIPTION_LAYER);
-    } else if (activeLayer === DESCRIPTION_LAYER) {
-      onSelectLayer(NAME_LAYER);
-    }
-  };
+  const descriptionEnabled = layers[DESCRIPTION_LAYER].enabled;
+  const studentsMeta = studentsCount > 0
+    ? `${studentsCount}${descriptionEnabled ? ` · ${descriptionCount} con descripción` : ''}`
+    : null;
 
   return (
-    <aside style={{
-      width: '350px',
-      background: 'var(--surface-color)',
-      borderLeft: '1px solid var(--border-color)',
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-    }}>
-      <header style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)' }}>
-        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <FileType size={20} className='text-primary' color='var(--primary-color)' />
-          Exportador de Diplomas
-        </h2>
-        <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-          Generación de credenciales en lote
-        </p>
+    <aside className="sidebar">
+      <header className="sidebar-header">
+        <span className="brand-mark" aria-hidden><GraduationCap size={16} /></span>
+        <div>
+          <h1 className="brand-title">Diplomas</h1>
+          <p className="brand-subtitle">Generación en lote</p>
+        </div>
       </header>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <div className="sidebar-body">
+        <Section title="Plantilla">
+          <TemplatePicker file={pdfFile} onFile={onPdfFile} />
+        </Section>
 
-        {/* PDF Upload */}
-        <section>
-          <h3 style={SECTION_TITLE_STYLE}>
-            <Upload size={16} /> PLANTILLA
-          </h3>
-          <div style={{ position: 'relative' }}>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={onPdfUpload}
-              style={{
-                width: '100%',
-                padding: '2rem 1rem',
-                border: '2px dashed var(--border-color)',
-                borderRadius: 'var(--radius)',
-                cursor: 'pointer',
-                textAlign: 'center',
-                color: 'transparent',
-              }}
-            />
-            <div style={{
-              position: 'absolute',
-              top: 0, left: 0, right: 0, bottom: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              pointerEvents: 'none',
-              color: 'var(--text-secondary)',
-              fontSize: '0.875rem',
-            }}>
-              Clic para subir PDF
-            </div>
-          </div>
-        </section>
-
-        {/* Text layers */}
-        <section>
-          <h3 style={SECTION_TITLE_STYLE}>
-            <Layers size={16} /> LÍNEAS DE TEXTO
-          </h3>
-
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.75rem',
-            marginBottom: '0.75rem',
-            background: 'var(--bg-color)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius)',
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-          }}>
-            <input
-              type="checkbox"
-              checked={layers[DESCRIPTION_LAYER].enabled}
-              onChange={(event) => toggleDescription(event.target.checked)}
-              style={{ width: 'auto', padding: 0 }}
-            />
-            Segunda línea (descripción)
-          </label>
-
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-            {LAYER_KEYS.map((key) => (
-              <LayerTab
-                key={key}
-                layerKey={key}
-                isActive={activeLayer === key}
-                isEnabled={layers[key].enabled}
-                onSelect={onSelectLayer}
-              />
-            ))}
-          </div>
-
-          <LayerControls
-            layerKey={activeLayer}
-            layers={layers}
-            onLayerChange={(patch) => onLayerChange(activeLayer, patch)}
-            onLayerPositionChange={(position) => onLayerPositionChange(activeLayer, position)}
-            onLayerFontUpload={(event) => onLayerFontUpload(activeLayer, event)}
-          />
-        </section>
-
-        {/* Students Input */}
-        <section style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={SECTION_TITLE_STYLE}>
-            <Users size={16} /> LISTA DE ESTUDIANTES
-          </h3>
+        <Section title="Estudiantes" meta={studentsMeta}>
           <textarea
+            className="control textarea"
+            aria-label="Lista de estudiantes"
             placeholder={'Ana Pérez; Ingeniera Industrial\nLuis Gómez; Contador Público'}
             value={studentsText}
             onChange={(event) => setStudentsText(event.target.value)}
-            style={{
-              width: '100%',
-              flex: 1,
-              minHeight: '150px',
-              resize: 'none',
-              lineHeight: '1.5',
-            }}
+            rows={6}
+            spellCheck={false}
           />
-          <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            Formato: Nombre; Descripción (una por línea)
+          <p className="hint">
+            Uno por línea. Separa la descripción con <kbd>;</kbd>
           </p>
-          <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
-            {studentsCount} estudiantes · {descriptionCount} con descripción
+        </Section>
+
+        <Section title="Texto">
+          <div className="segmented" role="tablist" aria-label="Línea de texto">
+            {LAYER_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={activeLayer === key}
+                className="segmented-item"
+                onClick={() => onSelectLayer(key)}
+              >
+                {LAYER_LABELS[key]}
+                {!layers[key].enabled && <span className="segmented-badge">Off</span>}
+              </button>
+            ))}
           </div>
-        </section>
 
+          <div role="tabpanel" aria-label={LAYER_LABELS[activeLayer]}>
+            <LayerControls
+              layerKey={activeLayer}
+              layers={layers}
+              onLayerChange={(patch) => onLayerChange(activeLayer, patch)}
+              onLayerPositionChange={(position) => onLayerPositionChange(activeLayer, position)}
+              onFontFile={(file) => onLayerFontFile(activeLayer, file)}
+            />
+          </div>
+        </Section>
       </div>
 
-      <div style={{ padding: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
-        <button
+      <footer className="sidebar-footer">
+        {notice && <Notice notice={notice} onDismiss={onDismissNotice} />}
+        <ExportButton
+          count={studentsCount}
+          isGenerating={isGenerating}
+          progress={progress}
+          disabled={Boolean(exportBlocker) || isGenerating}
           onClick={onExport}
-          disabled={isGenerating}
-          style={{
-            width: '100%',
-            padding: '1rem',
-            background: 'var(--primary-color)',
-            color: 'white',
-            border: 'none',
-            borderRadius: 'var(--radius)',
-            fontSize: '1rem',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            opacity: isGenerating ? 0.7 : 1,
-          }}
-        >
-          {isGenerating
-            ? (progress ? `Generando ${progress.current}/${progress.total}…` : 'Generando...')
-            : <><Download size={20} /> Exportar PDFs en Lote</>}
-        </button>
-      </div>
+        />
+        {exportBlocker && !isGenerating && <p className="hint hint-center">{exportBlocker}</p>}
+      </footer>
     </aside>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { FileUp, Maximize, Minus, Plus } from 'lucide-react';
+import { FilePicker } from './FilePicker';
 import { clamp } from '../utils/clamp';
 import { computeTextLayout } from '../utils/textLayout';
 import { DEFAULT_PREVIEW_FONT, measureTextWidth } from '../utils/measureText';
@@ -21,6 +22,7 @@ const PLACEHOLDERS = {
 
 export function WorkArea({
   pdfFile,
+  onPdfFile,
   layers,
   previewTexts,
   activeLayer,
@@ -414,152 +416,106 @@ export function WorkArea({
     });
   }, [pageSize, layouts, baseScale, layers]);
 
+  const stopPointer = (event) => event.stopPropagation();
+
   return (
     <div
       ref={containerRef}
-      style={{
-        flex: 1,
-        height: '100%',
-        background: 'var(--bg-color)',
-        position: 'relative',
-        overflow: 'hidden',
-        cursor: isPanning ? 'grabbing' : 'default',
-        touchAction: 'none',
-      }}
+      className={`canvas${isPanning ? ' is-panning' : ''}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endPointerInteraction}
       onPointerCancel={endPointerInteraction}
     >
       {!pdfFile && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            color: 'var(--text-secondary)',
-            textAlign: 'center',
-          }}
+        <FilePicker
+          accept=".pdf,application/pdf"
+          onFile={onPdfFile}
+          inputLabel="Plantilla PDF"
+          className="empty-state"
+          onPointerDown={stopPointer}
         >
-          <p>No hay PDF cargado</p>
-          <p style={{ fontSize: '0.8rem' }}>
-            Sube una plantilla desde el panel lateral para comenzar
-          </p>
-        </div>
+          <span className="empty-state-icon" aria-hidden><FileUp size={22} /></span>
+          <span className="empty-state-title">Arrastra tu plantilla PDF aquí</span>
+          <span className="empty-state-text">o haz clic para elegir un archivo</span>
+        </FilePicker>
       )}
 
       {pdfFile && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: '2rem',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'var(--surface-color)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '999px',
-            padding: '0.5rem 1rem',
-            display: 'flex',
-            gap: '1rem',
-            zIndex: 10,
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-          }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
+        <div className="toolbar" onPointerDown={stopPointer}>
           <button
+            type="button"
+            className="icon-btn"
             onClick={() => setZoomLevel((zoom) => Math.max(MIN_ZOOM, zoom - ZOOM_STEP))}
-            style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+            disabled={zoomLevel <= MIN_ZOOM}
             title="Alejar"
+            aria-label="Alejar"
           >
-            <ZoomOut size={20} />
+            <Minus size={16} />
           </button>
-          <span style={{ minWidth: '3rem', textAlign: 'center', fontSize: '0.875rem' }}>
-            {Math.round(zoomLevel * 100)}%
-          </span>
+          <span className="toolbar-value" aria-live="polite">{Math.round(zoomLevel * 100)}%</span>
           <button
+            type="button"
+            className="icon-btn"
             onClick={() => setZoomLevel((zoom) => Math.min(MAX_ZOOM, zoom + ZOOM_STEP))}
-            style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+            disabled={zoomLevel >= MAX_ZOOM}
             title="Acercar"
+            aria-label="Acercar"
           >
-            <ZoomIn size={20} />
+            <Plus size={16} />
           </button>
-          <div style={{ width: '1px', background: 'var(--border-color)' }} />
+          <span className="toolbar-divider" aria-hidden />
           <button
+            type="button"
+            className="icon-btn"
             onClick={() => {
               setZoomLevel(1);
               setPan({ x: 0, y: 0 });
             }}
-            style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
-            title="Reiniciar Vista"
+            title="Ajustar a la vista"
+            aria-label="Ajustar a la vista"
           >
-            <RotateCcw size={18} />
+            <Maximize size={15} />
           </button>
         </div>
       )}
 
       <div
+        className="canvas-stage"
         style={{
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoomLevel})`,
-          transformOrigin: 'center center',
-          transition: isPanning ? 'none' : 'transform 0.1s ease-out',
+          transition: isPanning ? 'none' : undefined,
         }}
       >
         {pageSize && baseScale > 0 && (
           <div
+            className="page"
             style={{
-              position: 'relative',
               width: pageSize.width * baseScale,
               height: pageSize.height * baseScale,
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-              borderRadius: '4px',
-              overflow: 'hidden',
             }}
           >
-            <canvas
-              ref={canvasRef}
-              style={{ display: 'block', width: '100%', height: '100%' }}
-            />
-            <canvas
-              ref={overlayRef}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-              }}
-            />
-            {textBoxes.map((box) => {
-              const isActive = activeLayer === box.key;
-
-              return (
-                <div
-                  key={box.key}
-                  data-drag-layer={box.key}
-                  title={LAYER_LABELS[box.key]}
-                  style={{
-                    position: 'absolute',
-                    left: box.left,
-                    top: box.top,
-                    width: box.width,
-                    height: box.height,
-                    border: isActive
-                      ? '2px solid rgba(99, 102, 241, 0.9)'
-                      : '1px dashed rgba(99, 102, 241, 0.45)',
-                    borderRadius: '4px',
-                    background: isActive ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
-                    cursor: draggingLayer === box.key ? 'grabbing' : 'grab',
-                    userSelect: 'none',
-                  }}
-                />
-              );
-            })}
+            <canvas ref={canvasRef} className="page-canvas" />
+            <canvas ref={overlayRef} className="page-overlay" />
+            {textBoxes.map((box) => (
+              <div
+                key={box.key}
+                data-drag-layer={box.key}
+                data-label={LAYER_LABELS[box.key]}
+                title={LAYER_LABELS[box.key]}
+                className={[
+                  'text-box',
+                  activeLayer === box.key && 'is-active',
+                  draggingLayer === box.key && 'is-dragging',
+                ].filter(Boolean).join(' ')}
+                style={{
+                  left: box.left,
+                  top: box.top,
+                  width: box.width,
+                  height: box.height,
+                }}
+              />
+            ))}
           </div>
         )}
       </div>
