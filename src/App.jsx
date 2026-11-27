@@ -3,10 +3,12 @@ import { Sidebar } from './components/Sidebar';
 import { WorkArea } from './components/WorkArea';
 import { generateZip } from './utils/pdfGenerator';
 import { clamp } from './utils/clamp';
+import { isValidHexColor } from './utils/parseColor';
 import { countDescriptions, parseStudents } from './utils/names';
 import {
   DESCRIPTION_LAYER,
   LAYER_KEYS,
+  LAYER_LABELS,
   NAME_LAYER,
   createDefaultLayers,
   updateLayer,
@@ -14,9 +16,28 @@ import {
 import './index.css';
 
 const DEFAULT_POSITION = { x: 0.5, y: 0.5 };
+const PDF_EXTENSIONS = ['.pdf'];
+const FONT_EXTENSIONS = ['.ttf', '.otf', '.woff'];
+const MAX_LISTED_FAILURES = 5;
 
-function isValidHexColor(value) {
-  return /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value ?? '').trim());
+function hasExtension(file, extensions) {
+  const name = file.name.toLowerCase();
+  return extensions.some((extension) => name.endsWith(extension));
+}
+
+// First reason the export cannot run yet, shown under the export button.
+function findExportBlocker({ pdfFile, students, layers }) {
+  if (!pdfFile) return 'Sube una plantilla PDF para continuar.';
+  if (students.length === 0) return 'Agrega al menos un estudiante.';
+
+  const invalidColorLayer = LAYER_KEYS.find(
+    (key) => layers[key].enabled && !isValidHexColor(layers[key].color),
+  );
+  if (invalidColorLayer) {
+    return `El color de «${LAYER_LABELS[invalidColorLayer]}» debe ser hexadecimal, p. ej. #1a2b3c.`;
+  }
+
+  return null;
 }
 
 export default function App() {
@@ -26,9 +47,12 @@ export default function App() {
   const [activeLayer, setActiveLayer] = useState(NAME_LAYER);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [notice, setNotice] = useState(null);
 
   const students = parseStudents(studentsText);
+  const descriptionCount = countDescriptions(students);
   const previewStudent = students[0] ?? { name: '', description: '' };
+  const exportBlocker = findExportBlocker({ pdfFile, students, layers });
 
   const handleLayerChange = (key, patch) => {
     setLayers((current) => updateLayer(current, key, patch));
@@ -43,44 +67,35 @@ export default function App() {
     }));
   };
 
-  const handlePdfUpload = (event) => {
-    const file = event.target.files?.[0];
-    if (file) setPdfFile(file);
+  const handlePdfFile = (file) => {
+    if (!hasExtension(file, PDF_EXTENSIONS)) {
+      setNotice({ tone: 'error', title: `«${file.name}» no es un PDF.` });
+      return;
+    }
+    setNotice(null);
+    setPdfFile(file);
   };
 
-  const handleLayerFontUpload = (key, event) => {
-    const file = event.target.files?.[0];
-    if (file) handleLayerChange(key, { customFont: file });
+  const handleLayerFontFile = (key, file) => {
+    if (!hasExtension(file, FONT_EXTENSIONS)) {
+      setNotice({ tone: 'error', title: 'La fuente debe ser un archivo .ttf, .otf o .woff.' });
+      return;
+    }
+    setNotice(null);
+    handleLayerChange(key, { customFont: file });
   };
 
   const handleExport = async () => {
-    if (!pdfFile) {
-      alert('Por favor sube una plantilla PDF primero.');
-      return;
-    }
-    if (students.length === 0) {
-      alert('Por favor ingresa al menos un nombre.');
-      return;
-    }
+    if (exportBlocker || isGenerating) return;
 
-    const invalidColorLayer = LAYER_KEYS.find(
-      (key) => layers[key].enabled && !isValidHexColor(layers[key].color),
-    );
-
-    if (invalidColorLayer) {
-      alert(
-        `El color de la línea "${invalidColorLayer}" debe ser hexadecimal, por ejemplo #1a2b3c.`,
-      );
-      return;
-    }
-
-    if (layers[DESCRIPTION_LAYER].enabled && countDescriptions(students) === 0) {
+    if (layers[DESCRIPTION_LAYER].enabled && descriptionCount === 0) {
       const shouldContinue = window.confirm(
-        'Activaste la segunda línea pero ningún estudiante tiene descripción. ¿Continuar?',
+        'Activaste la descripción pero ningún estudiante tiene una. ¿Continuar?',
       );
       if (!shouldContinue) return;
     }
 
+    setNotice(null);
     setIsGenerating(true);
     setProgress({ current: 0, total: students.length });
 
@@ -93,20 +108,25 @@ export default function App() {
       });
 
       if (result.failures.length > 0) {
-        const rest = result.failures
-          .slice(0, 5)
-          .map((failure) => `• ${failure.name}: ${failure.message}`)
-          .join('\n');
-        const more = result.failures.length > 5 ? '\n…' : '';
+        const items = result.failures
+          .slice(0, MAX_LISTED_FAILURES)
+          .map((failure) => `${failure.name}: ${failure.message}`);
+        if (result.failures.length > MAX_LISTED_FAILURES) items.push('…');
 
-        alert(
-          `Se generaron ${result.succeeded} de ${result.total} diplomas.\n\n` +
-            `No se pudieron generar:\n${rest}${more}`,
-        );
+        setNotice({
+          tone: 'error',
+          title: `Se generaron ${result.succeeded} de ${result.total} diplomas.`,
+          items,
+        });
+      } else {
+        setNotice({
+          tone: 'success',
+          title: `${result.succeeded} ${result.succeeded === 1 ? 'diploma generado' : 'diplomas generados'}.`,
+        });
       }
     } catch (error) {
       console.error('Export failed:', error);
-      alert('Error al generar PDFs. Ver consola para detalles.');
+      setNotice({ tone: 'error', title: 'Error al generar los PDFs. Revisa la consola para más detalles.' });
     } finally {
       setIsGenerating(false);
       setProgress(null);
@@ -114,19 +134,11 @@ export default function App() {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-      <main
-        style={{
-          flex: 1,
-          position: 'relative',
-          background: '#020617',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+    <div className="app">
+      <main className="workspace">
         <WorkArea
           pdfFile={pdfFile}
+          onPdfFile={handlePdfFile}
           layers={layers}
           previewTexts={previewStudent}
           activeLayer={activeLayer}
@@ -135,20 +147,24 @@ export default function App() {
         />
       </main>
       <Sidebar
-        onPdfUpload={handlePdfUpload}
+        pdfFile={pdfFile}
+        onPdfFile={handlePdfFile}
         studentsText={studentsText}
         setStudentsText={setStudentsText}
         studentsCount={students.length}
-        descriptionCount={countDescriptions(students)}
+        descriptionCount={descriptionCount}
         layers={layers}
         activeLayer={activeLayer}
         onSelectLayer={setActiveLayer}
         onLayerChange={handleLayerChange}
         onLayerPositionChange={handleLayerPositionChange}
-        onLayerFontUpload={handleLayerFontUpload}
+        onLayerFontFile={handleLayerFontFile}
         onExport={handleExport}
         isGenerating={isGenerating}
         progress={progress}
+        exportBlocker={exportBlocker}
+        notice={notice}
+        onDismissNotice={() => setNotice(null)}
       />
     </div>
   );
