@@ -44,3 +44,15 @@ export function updateLayer(layers, key, patch) {
 export function enabledLayers(layers) {
   return LAYER_KEYS.filter((key) => layers[key]?.enabled);
 }
+
+// Font a layer renders with. The description shares the name's font unless it
+// has its own upload. Preview and export apply the same rule.
+export function resolveLayerFont(layers, key) {
+  const own = layers[key].customFont;
+  if (own) return { file: own, source: 'own' };
+
+  const nameFont = key === DESCRIPTION_LAYER ? layers[NAME_LAYER].customFont : null;
+  if (nameFont) return { file: nameFont, source: 'inherited' };
+
+  return { file: null, source: 'default' };
+}

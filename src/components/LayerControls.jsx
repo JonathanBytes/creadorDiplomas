@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   AlignHorizontalJustifyCenter,
   AlignVerticalJustifyCenter,
@@ -5,8 +6,10 @@ import {
   Palette,
   Type,
   Underline,
+  Upload,
 } from 'lucide-react';
 import { clamp } from '../utils/clamp';
+import { DESCRIPTION_LAYER, LAYER_LABELS, NAME_LAYER, resolveLayerFont } from '../utils/layers';
 
 const PERCENT_STEP = 0.1;
 
@@ -27,6 +30,12 @@ const SECTION_TITLE_STYLE = {
   gap: '0.5rem',
 };
 
+const HINT_STYLE = {
+  margin: '0.5rem 0 0',
+  fontSize: '0.75rem',
+  color: 'var(--text-secondary)',
+};
+
 const BUTTON_STYLE = {
   flex: 1,
   padding: '0.5rem',
@@ -37,6 +46,7 @@ const BUTTON_STYLE = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  gap: '0.5rem',
 };
 
 function percentInputValue(value) {
@@ -47,6 +57,12 @@ function toNumber(value, fallback, min, max) {
   const parsed = Number(value);
   if (Number.isNaN(parsed)) return fallback;
   return clamp(parsed, min, max);
+}
+
+function describeFont(font) {
+  if (font.source === 'own') return `Personalizada: ${font.file.name}`;
+  if (font.source === 'inherited') return `Igual que el nombre: ${font.file.name}`;
+  return 'Helvetica (por defecto)';
 }
 
 function NumberField({ label, value, min = 0, max = Infinity, step, onChange }) {
@@ -70,30 +86,73 @@ function NumberField({ label, value, min = 0, max = Infinity, step, onChange }) 
 }
 
 export function LayerControls({
-  layer,
+  layerKey,
+  layers,
   onLayerChange,
   onLayerPositionChange,
   onLayerFontUpload,
 }) {
+  const layer = layers[layerKey];
+  const font = resolveLayerFont(layers, layerKey);
+  const fileInputRef = useRef(null);
+
+  const nameFontIsShared =
+    layerKey === NAME_LAYER &&
+    layers[DESCRIPTION_LAYER].enabled &&
+    resolveLayerFont(layers, DESCRIPTION_LAYER).source === 'inherited';
+
   const setPosition = (patch) => {
     onLayerPositionChange({ ...layer.position, ...patch });
+  };
+
+  const handleFontFileChange = (event) => {
+    onLayerFontUpload(event);
+    // Clear the picker so choosing the same file again still fires onChange.
+    event.target.value = '';
   };
 
   return (
     <>
       <section>
         <h3 style={SECTION_TITLE_STYLE}>
-          <Type size={16} /> FUENTE
+          <Type size={16} /> FUENTE · {LAYER_LABELS[layerKey].toUpperCase()}
         </h3>
+        <p style={{ margin: '0 0 0.75rem', fontSize: '0.875rem' }}>
+          {describeFont(font)}
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            style={BUTTON_STYLE}
+          >
+            <Upload size={16} /> Subir fuente…
+          </button>
+          {font.source === 'own' && (
+            <button
+              type="button"
+              onClick={() => onLayerChange({ customFont: null })}
+              style={BUTTON_STYLE}
+            >
+              {layerKey === DESCRIPTION_LAYER ? 'Usar la del nombre' : 'Quitar fuente'}
+            </button>
+          )}
+        </div>
         <input
+          ref={fileInputRef}
           type="file"
           accept=".ttf,.otf,.woff"
-          onChange={onLayerFontUpload}
-          style={{ width: '100%' }}
+          onChange={handleFontFileChange}
+          hidden
         />
-        <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-          {layer.customFont ? layer.customFont.name : 'Fuente por defecto (Helvetica)'}
-        </p>
+        {layerKey === DESCRIPTION_LAYER && font.source === 'inherited' && (
+          <p style={HINT_STYLE}>
+            Sin fuente propia: sigue a la del nombre. Sube una fuente para usar otra solo aquí.
+          </p>
+        )}
+        {nameFontIsShared && (
+          <p style={HINT_STYLE}>También se aplica a la descripción, que no tiene fuente propia.</p>
+        )}
       </section>
 
       <section>

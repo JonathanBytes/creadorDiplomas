@@ -53,8 +53,6 @@ export function Sidebar({
   isGenerating,
   progress,
 }) {
-  const activeLayerConfig = layers[activeLayer];
-
   const toggleDescription = (enabled) => {
     onLayerChange(DESCRIPTION_LAYER, { enabled });
     if (enabled) {
@@ -158,7 +156,8 @@ export function Sidebar({
           </div>
 
           <LayerControls
-            layer={activeLayerConfig}
+            layerKey={activeLayer}
+            layers={layers}
             onLayerChange={(patch) => onLayerChange(activeLayer, patch)}
             onLayerPositionChange={(position) => onLayerPositionChange(activeLayer, position)}
             onLayerFontUpload={(event) => onLayerFontUpload(activeLayer, event)}
