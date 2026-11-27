@@ -47,7 +47,7 @@ async function renderAndRead({ rotation, cropBox, textPosition, fontSize = 24, n
   const pdfPage = await pdf.getPage(1);
   const viewport = pdfPage.getViewport({ scale: 1 });
   const textContent = await pdfPage.getTextContent();
-  await pdf.destroy();
+  await pdf.loadingTask.destroy();
 
   const item = textContent.items.find((entry) => entry.str === name);
   assert.ok(item, 'text item should be present in the exported PDF');
@@ -152,7 +152,7 @@ async function readTextItems(bytes) {
   const pdf = await pdfjsLib.getDocument({ data: bytes, ...PDFJS_OPTIONS }).promise;
   const pdfPage = await pdf.getPage(1);
   const textContent = await pdfPage.getTextContent();
-  await pdf.destroy();
+  await pdf.loadingTask.destroy();
 
   return Object.fromEntries(textContent.items.map((item) => [item.str, item]));
 }

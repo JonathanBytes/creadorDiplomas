@@ -79,7 +79,7 @@ export function WorkArea({
         const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
 
         if (cancelled) {
-          await doc.destroy();
+          await doc.loadingTask.destroy();
           return;
         }
 
@@ -87,7 +87,7 @@ export function WorkArea({
         const viewport = page.getViewport({ scale: 1 });
 
         if (cancelled) {
-          await doc.destroy();
+          await doc.loadingTask.destroy();
           return;
         }
 
@@ -109,7 +109,7 @@ export function WorkArea({
   useEffect(() => {
     if (!pdfDoc) return;
     return () => {
-      pdfDoc.destroy();
+      pdfDoc.loadingTask.destroy();
     };
   }, [pdfDoc]);
 
